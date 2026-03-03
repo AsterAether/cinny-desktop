@@ -1,3 +1,6 @@
 [submodule "cinny"]
 	path = cinny
 	url = https://github.com/cinnyapp/cinny.git
+[submodule "plugins-workspace"]
+	path = plugins-workspace
+	url = git@github.com:AsterAether/plugins-workspace.git
