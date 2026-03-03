@@ -1,64 +1,138 @@
 use serde::{Deserialize, Serialize};
+use tauri::{plugin::PluginHandle, Manager, Runtime};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PushPayload {
-    pub room_id: Option<String>,
-    pub event_id: Option<String>,
-    pub sender: Option<String>,
-    pub sender_display_name: Option<String>,
-    pub room_name: Option<String>,
-    pub content: Option<serde_json::Value>,
-    pub counts: Option<serde_json::Value>,
-}
+/// Holds the Android plugin handle for UnifiedPush operations.
+/// Stored as app state after plugin initialization.
+pub struct UnifiedPushHandle<R: Runtime>(pub PluginHandle<R>);
 
-#[tauri::command]
-pub async fn register_unifiedpush() -> Result<String, String> {
-    // Stub implementation - will be completed in future task
-    println!("UnifiedPush registration requested (stub)");
-    Ok("UnifiedPush registration not yet implemented".to_string())
-}
-
-#[tauri::command]
-pub async fn unregister_unifiedpush() -> Result<(), String> {
-    // Stub implementation - will be completed in future task
-    println!("UnifiedPush unregistration requested (stub)");
-    Ok(())
-}
-
-pub fn parse_push_payload(payload_str: &str) -> Result<PushPayload, String> {
-    serde_json::from_str(payload_str)
-        .map_err(|e| format!("Failed to parse push payload: {}", e))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_valid_payload() {
-        let json = r#"{
-            "room_id": "!room:server.com",
-            "event_id": "$event",
-            "sender": "@alice:server.com",
-            "sender_display_name": "Alice",
-            "room_name": "General",
-            "content": {"body": "Hello"},
-            "counts": {"unread": 5}
-        }"#;
-
-        let payload = parse_push_payload(json).unwrap();
-        assert_eq!(payload.room_id, Some("!room:server.com".to_string()));
-        assert_eq!(payload.sender, Some("@alice:server.com".to_string()));
+impl<R: Runtime> UnifiedPushHandle<R> {
+    pub fn new(handle: PluginHandle<R>) -> Self {
+        Self(handle)
     }
 
-    #[test]
-    fn test_parse_minimal_payload() {
-        let json = r#"{
-            "room_id": "!room:server.com"
-        }"#;
+    pub fn register(&self) -> Result<(), String> {
+        #[derive(Serialize)]
+        struct Empty {}
+        self.0
+            .run_mobile_plugin::<serde_json::Value>("register", Empty {})
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
 
-        let payload = parse_push_payload(json).unwrap();
-        assert_eq!(payload.room_id, Some("!room:server.com".to_string()));
-        assert_eq!(payload.sender, None);
+    pub fn unregister(&self) -> Result<(), String> {
+        #[derive(Serialize)]
+        struct Empty {}
+        self.0
+            .run_mobile_plugin::<serde_json::Value>("unregister", Empty {})
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn get_endpoint(&self) -> Result<Option<String>, String> {
+        #[derive(Serialize)]
+        struct Empty {}
+        #[derive(Deserialize)]
+        struct EndpointResult {
+            endpoint: Option<String>,
+        }
+        self.0
+            .run_mobile_plugin::<EndpointResult>("getEndpoint", Empty {})
+            .map(|r| r.endpoint)
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn get_distributors(&self) -> Result<Vec<String>, String> {
+        #[derive(Serialize)]
+        struct Empty {}
+        self.0
+            .run_mobile_plugin::<Vec<String>>("getDistributors", Empty {})
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn save_distributor(&self, distributor: &str) -> Result<(), String> {
+        #[derive(Serialize)]
+        struct Args<'a> {
+            distributor: &'a str,
+        }
+        self.0
+            .run_mobile_plugin::<serde_json::Value>("saveDistributor", Args { distributor })
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn register_unifiedpush<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        app.state::<UnifiedPushHandle<R>>().register()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub async fn unregister_unifiedpush<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        app.state::<UnifiedPushHandle<R>>().unregister()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub async fn get_push_endpoint<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<Option<String>, String> {
+    #[cfg(target_os = "android")]
+    {
+        app.state::<UnifiedPushHandle<R>>().get_endpoint()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn get_push_distributors<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<Vec<String>, String> {
+    #[cfg(target_os = "android")]
+    {
+        app.state::<UnifiedPushHandle<R>>().get_distributors()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(vec![])
+    }
+}
+
+#[tauri::command]
+pub async fn save_push_distributor<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    distributor: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        app.state::<UnifiedPushHandle<R>>().save_distributor(&distributor)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, distributor);
+        Ok(())
     }
 }

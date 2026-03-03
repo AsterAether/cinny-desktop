@@ -19,17 +19,6 @@ mod unifiedpush;
 
 use tauri::Manager;
 
-#[cfg(target_os = "android")]
-fn inject_notification_polyfill(window: &tauri::WebviewWindow) -> Result<(), String> {
-    let polyfill_script = include_str!("../gen/android/notification-polyfill.js");
-
-    window.eval(polyfill_script)
-        .map_err(|e| format!("Failed to inject notification polyfill: {}", e))?;
-
-    println!("Notification polyfill injected successfully");
-    Ok(())
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let port: u16 = 44548;
@@ -46,6 +35,15 @@ pub fn run() {
     {
         builder = builder
             .plugin(tauri_plugin_notification::init())
+            .plugin(
+                tauri::plugin::Builder::new("unified-push")
+                    .setup(|app, api: tauri::plugin::PluginApi<_, ()>| {
+                        let handle = api.register_android_plugin("in.cinny.app", "UnifiedPushPlugin")?;
+                        app.manage(unifiedpush::UnifiedPushHandle::new(handle));
+                        Ok(())
+                    })
+                    .build()
+            )
             .manage(notifications::NotificationManager::new())
             .invoke_handler(tauri::generate_handler![
                 notifications::request_notification_permission,
@@ -54,6 +52,9 @@ pub fn run() {
                 notifications::close_notification,
                 unifiedpush::register_unifiedpush,
                 unifiedpush::unregister_unifiedpush,
+                unifiedpush::get_push_endpoint,
+                unifiedpush::get_push_distributors,
+                unifiedpush::save_push_distributor,
             ]);
     }
 

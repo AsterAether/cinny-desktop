@@ -193,4 +193,130 @@
   })();
 
   console.log('[Polyfill] Web Notification API polyfill installed successfully');
+
+  // ============================================================
+  // UnifiedPush Registration Module
+  // ============================================================
+  // Exposed as window.__cinny_register_push(accessToken, homeserverUrl)
+  // Called by Cinny web app after login when running on Android.
+
+  window.__cinny_register_push = async function(accessToken, homeserverUrl) {
+    try {
+      console.log('[Polyfill] Starting UnifiedPush registration...');
+      window.__cinny_push_credentials = { accessToken, homeserverUrl };
+
+      // Check if any UP distributor is installed
+      let distributors;
+      try {
+        distributors = await invoke('get_push_distributors');
+      } catch (e) {
+        console.warn('[Polyfill] get_push_distributors failed:', e);
+        return;
+      }
+
+      if (!distributors || distributors.length === 0) {
+        console.log('[Polyfill] No UnifiedPush distributor installed, skipping background push setup');
+        return;
+      }
+
+      console.log('[Polyfill] Found UP distributors:', distributors);
+
+      // Save first distributor and register
+      await invoke('save_push_distributor', { distributor: distributors[0] });
+      await invoke('register_unifiedpush');
+
+      console.log('[Polyfill] Registered with UP distributor:', distributors[0]);
+
+      // Poll for endpoint (distributor responds asynchronously)
+      const endpoint = await waitForEndpoint(30000); // 30s timeout
+      if (!endpoint) {
+        console.warn('[Polyfill] Timed out waiting for UP endpoint');
+        return;
+      }
+
+      console.log('[Polyfill] Got UP endpoint:', endpoint);
+      await registerMatrixPusher(accessToken, homeserverUrl, endpoint);
+
+    } catch (error) {
+      console.error('[Polyfill] UnifiedPush registration error:', error);
+    }
+  };
+
+  async function waitForEndpoint(timeoutMs) {
+    const start = Date.now();
+    const pollInterval = 1000;
+
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const result = await invoke('get_push_endpoint');
+        if (result && result !== '') {
+          return result;
+        }
+      } catch (e) {
+        // ignore
+      }
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+    return null;
+  }
+
+  async function registerMatrixPusher(accessToken, homeserverUrl, endpoint) {
+    try {
+      // Derive gateway URL from endpoint base URL
+      // e.g. https://ntfy.sh/up_abc123 -> https://ntfy.sh/_matrix/push/v1/notify
+      const url = new URL(endpoint);
+      const gatewayUrl = `${url.protocol}//${url.host}/_matrix/push/v1/notify`;
+
+      const hsUrl = homeserverUrl.replace(/\/$/, '');
+      const response = await fetch(`${hsUrl}/_matrix/client/v3/pushers/set`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          kind: 'http',
+          app_id: 'in.cinny.app',
+          app_display_name: 'Cinny',
+          device_display_name: 'Android',
+          pushkey: endpoint,
+          lang: 'en',
+          data: {
+            url: gatewayUrl,
+          },
+        }),
+      });
+
+      if (response.ok) {
+        console.log('[Polyfill] Matrix pusher registered successfully');
+      } else {
+        const body = await response.text();
+        console.error('[Polyfill] Failed to register Matrix pusher:', response.status, body);
+      }
+    } catch (error) {
+      console.error('[Polyfill] Error registering Matrix pusher:', error);
+    }
+  }
+
+  // Listen for endpoint changes (distributor may update the endpoint)
+  (async function listenForEndpointChanges() {
+    try {
+      const channel = new Channel();
+      channel.onmessage = async (payload) => {
+        if (payload && payload.endpoint) {
+          console.log('[Polyfill] UP endpoint changed:', payload.endpoint);
+          if (window.__cinny_push_credentials) {
+            const { accessToken, homeserverUrl } = window.__cinny_push_credentials;
+            await registerMatrixPusher(accessToken, homeserverUrl, payload.endpoint);
+          }
+        }
+      };
+      await invoke('plugin:unified-push|register_listener', {
+        event: 'newEndpoint',
+        handler: channel,
+      });
+    } catch (e) {
+      // Plugin event listener not available, endpoint changes won't auto-re-register
+    }
+  })();
 })();
