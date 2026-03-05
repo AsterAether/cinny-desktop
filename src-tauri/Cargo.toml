@@ -2,7 +2,7 @@
 
 [package]
 name = "cinny"
-version = "4.10.2"
+version = "4.10.5"
 description = "Yet another matrix client"
 authors = ["Ajay Bura"]
 license = "AGPL-3.0-only"
@@ -21,8 +21,6 @@ tauri = { version = "2", features = [ "devtools"] }
 tauri-plugin-localhost = "2"
 tauri-plugin-window-state = "2"
 tauri-plugin-clipboard-manager = "2"
-#tauri-plugin-notification = "2"
-#tauri-plugin-notification = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-notification = { path = "../plugins-workspace/plugins/notification" }
 tauri-plugin-fs = "2"
 tauri-plugin-shell = "2"

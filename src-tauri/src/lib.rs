@@ -28,6 +28,7 @@ pub fn run() {
     #[cfg(desktop)]
     {
         builder = builder
+            .plugin(tauri_plugin_localhost::Builder::new(port).build())
             .plugin(tauri_plugin_window_state::Builder::default().build());
     }
 
@@ -62,23 +63,27 @@ pub fn run() {
     builder
         .setup(|app| {
             use tauri::webview::WebviewWindowBuilder;
+            use tauri::WebviewUrl;
 
             // On Android, create window with polyfill
             #[cfg(target_os = "android")]
             {
                 let polyfill_script = include_str!("../gen/android/notification-polyfill.js");
 
-                let _window = WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
+                let _window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .initialization_script(polyfill_script)
                     .build()?;
 
                 println!("Android window created with polyfill");
             }
 
-            // On desktop, create window without polyfill
+            // On desktop, create window with localhost plugin
             #[cfg(not(target_os = "android"))]
             {
-                let _window = WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
+                let url = format!("http://localhost:{}", port).parse().unwrap();
+                let window_url = WebviewUrl::External(url);
+                WebviewWindowBuilder::new(app, "main".to_string(), window_url)
+                    .title("Cinny")
                     .build()?;
             }
 
