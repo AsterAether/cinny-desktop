@@ -164,8 +164,9 @@
             console.log('[Polyfill] Calling onclick handler for notification:', notificationId);
             notification.onclick.call(notification);
           } else {
-            console.warn('[Polyfill] No onclick handler found for notification:', notificationId);
-            console.log('[Polyfill] Available notifications:', Array.from(notifications.keys()));
+            // Background notification tap — navigate to inbox
+            console.log('[Polyfill] Background notification tap, navigating to inbox');
+            window.location.hash = '/inbox/notifications/';
           }
         } catch (error) {
           console.error('[Polyfill] Error handling notification action:', error);
@@ -194,6 +195,20 @@
 
   console.log('[Polyfill] Web Notification API polyfill installed successfully');
 
+  // Check if app was launched from a notification tap (cold start).
+  // We set a flag here and navigate later once Cinny is logged in and syncing.
+  (async function checkLaunchNotification() {
+    try {
+      const tapped = await invoke('get_launch_notification');
+      if (tapped) {
+        console.log('[Polyfill] Launched from notification tap');
+        window.__cinny_launched_from_notification = true;
+      }
+    } catch (e) {
+      // Not available or no notification launch
+    }
+  })();
+
   // ============================================================
   // UnifiedPush Registration Module
   // ============================================================
@@ -204,6 +219,13 @@
     try {
       console.log('[Polyfill] Starting UnifiedPush registration...');
       window.__cinny_push_credentials = { accessToken, homeserverUrl };
+
+      // If app was launched from a notification tap, navigate to inbox now that we're logged in
+      if (window.__cinny_launched_from_notification) {
+        delete window.__cinny_launched_from_notification;
+        console.log('[Polyfill] Navigating to inbox after notification cold start');
+        window.location.hash = '/inbox/notifications/';
+      }
 
       // Check if any UP distributor is installed
       let distributors;

@@ -55,6 +55,7 @@ pub fn run() {
                 unifiedpush::get_push_endpoint,
                 unifiedpush::get_push_distributors,
                 unifiedpush::save_push_distributor,
+                unifiedpush::get_launch_notification,
             ]);
     }
 

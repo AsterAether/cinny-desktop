@@ -85,6 +85,25 @@ class UnifiedPushPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @Command
+    fun getLaunchNotification(invoke: Invoke) {
+        try {
+            val intent = activity.intent
+            val userAction = intent?.getStringExtra("NotificationUserAction")
+            val result = JSObject()
+            if (userAction == "tap") {
+                result.put("tapped", true)
+                // Clear so we don't re-trigger on next call
+                intent.removeExtra("NotificationUserAction")
+            } else {
+                result.put("tapped", false)
+            }
+            invoke.resolveObject(result)
+        } catch (e: Exception) {
+            invoke.reject("getLaunchNotification failed: ${e.message}")
+        }
+    }
+
+    @Command
     fun saveDistributor(invoke: Invoke) {
         try {
             val distributor = invoke.getArgs().getString("distributor")

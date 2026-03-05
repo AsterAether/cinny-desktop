@@ -31,14 +31,12 @@ impl<R: Runtime> UnifiedPushHandle<R> {
     pub fn get_endpoint(&self) -> Result<Option<String>, String> {
         #[derive(Serialize)]
         struct Empty {}
-        #[derive(Deserialize)]
-        struct EndpointResult {
-            endpoint: Option<String>,
-        }
-        self.0
-            .run_mobile_plugin::<EndpointResult>("getEndpoint", Empty {})
-            .map(|r| r.endpoint)
-            .map_err(|e| e.to_string())
+        let raw: serde_json::Value = self.0
+            .run_mobile_plugin("getEndpoint", Empty {})
+            .map_err(|e| e.to_string())?;
+        // Android's JSONObject serializes with a "nameValuePairs" wrapper via JNI
+        let obj = raw.get("nameValuePairs").unwrap_or(&raw);
+        Ok(obj.get("endpoint").and_then(|v| v.as_str()).map(|s| s.to_string()))
     }
 
     pub fn get_distributors(&self) -> Result<Vec<String>, String> {
@@ -47,6 +45,16 @@ impl<R: Runtime> UnifiedPushHandle<R> {
         self.0
             .run_mobile_plugin::<Vec<String>>("getDistributors", Empty {})
             .map_err(|e| e.to_string())
+    }
+
+    pub fn get_launch_notification(&self) -> Result<bool, String> {
+        #[derive(Serialize)]
+        struct Empty {}
+        let raw: serde_json::Value = self.0
+            .run_mobile_plugin("getLaunchNotification", Empty {})
+            .map_err(|e| e.to_string())?;
+        let obj = raw.get("nameValuePairs").unwrap_or(&raw);
+        Ok(obj.get("tapped").and_then(|v| v.as_bool()).unwrap_or(false))
     }
 
     pub fn save_distributor(&self, distributor: &str) -> Result<(), String> {
@@ -118,6 +126,21 @@ pub async fn get_push_distributors<R: Runtime>(
     {
         let _ = app;
         Ok(vec![])
+    }
+}
+
+#[tauri::command]
+pub async fn get_launch_notification<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        app.state::<UnifiedPushHandle<R>>().get_launch_notification()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(false)
     }
 }
 
